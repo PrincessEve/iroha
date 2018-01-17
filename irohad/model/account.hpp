@@ -49,8 +49,6 @@ namespace iroha {
        * Key/Value account data
        */
       std::string json_data;
-
-      Account() {}
     };
   }
 }
