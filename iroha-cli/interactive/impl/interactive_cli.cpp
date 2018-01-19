@@ -40,12 +40,17 @@ namespace iroha_cli {
 
     InteractiveCli::InteractiveCli(
         const std::string &account_name,
+        const std::string &default_peer_ip,
+        const int &default_port,
         uint64_t tx_counter,
         uint64_t qry_counter,
         const std::shared_ptr<iroha::model::ModelCryptoProvider> &provider)
         : creator_(account_name),
-          tx_cli_(creator_, tx_counter, provider),
-          query_cli_(creator_, qry_counter, provider) {
+          tx_cli_(
+              creator_, default_peer_ip, default_port, tx_counter, provider),
+          query_cli_(
+              creator_, default_peer_ip, default_port, qry_counter, provider),
+          statusCli_(default_peer_ip, default_port) {
       assign_main_handlers();
     }
 
@@ -63,11 +68,17 @@ namespace iroha_cli {
       }
     }
 
-    void InteractiveCli::startQuery() { query_cli_.run(); }
+    void InteractiveCli::startQuery() {
+      query_cli_.run();
+    }
 
-    void InteractiveCli::startTx() { tx_cli_.run(); }
+    void InteractiveCli::startTx() {
+      tx_cli_.run();
+    }
 
-    void InteractiveCli::startTxStatusRequest() { statusCli_.run(); }
+    void InteractiveCli::startTxStatusRequest() {
+      statusCli_.run();
+    }
 
     void InteractiveCli::run() {
       std::cout << "Welcome to Iroha-Cli. " << std::endl;

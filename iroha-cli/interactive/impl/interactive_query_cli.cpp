@@ -22,9 +22,9 @@
 
 #include "byteutils.hpp"
 #include "client.hpp"
+#include "crypto/keys_manager_impl.hpp"
 #include "cryptography/ed25519_sha3_impl/internal/ed25519_impl.hpp"
 #include "cryptography/ed25519_sha3_impl/internal/sha3_hash.hpp"
-#include "crypto/keys_manager_impl.hpp"
 #include "datetime/time.hpp"
 #include "grpc_response_handler.hpp"
 #include "model/converters/json_query_factory.hpp"
@@ -87,7 +87,8 @@ namespace iroha_cli {
     void InteractiveQueryCli::create_result_menu() {
       result_handlers_ = {{SAVE_CODE, &InteractiveQueryCli::parseSaveFile},
                           {SEND_CODE, &InteractiveQueryCli::parseSendToIroha}};
-      result_params_descriptions_ = getCommonParamsMap();
+      result_params_descriptions_ =
+          getCommonParamsMap(default_peer_ip, default_port);
 
       result_points_ = formMenu(result_handlers_,
                                 result_params_descriptions_,
@@ -97,10 +98,14 @@ namespace iroha_cli {
 
     InteractiveQueryCli::InteractiveQueryCli(
         const std::string &account_name,
+        const std::string &default_peer_ip,
+        const int &default_port,
         uint64_t query_counter,
         const std::shared_ptr<iroha::model::ModelCryptoProvider> &provider)
         : current_context_(MAIN),
           creator_(account_name),
+          default_peer_ip(default_peer_ip),
+          default_port(default_port),
           counter_(query_counter),
           provider_(provider) {
       log_ = logger::log("InteractiveQueryCli");
@@ -177,14 +182,15 @@ namespace iroha_cli {
     InteractiveQueryCli::parseGetTransactions(QueryParams params) {
       // Parser definition: hash1 hash2 ...
       GetTransactions::TxHashCollectionType tx_hashes;
-      std::for_each(params.begin(), params.end(), [&tx_hashes](auto const& hex_hash){
-        if (auto opt =
-          iroha::hexstringToArray<GetTransactions::TxHashType::size()>(hex_hash)) {
-          tx_hashes.push_back(*opt);
-        }
-      });
+      std::for_each(
+          params.begin(), params.end(), [&tx_hashes](auto const &hex_hash) {
+            if (auto opt = iroha::hexstringToArray<
+                    GetTransactions::TxHashType::size()>(hex_hash)) {
+              tx_hashes.push_back(*opt);
+            }
+          });
       return generator_.generateGetTransactions(
-        local_time_, creator_, counter_, tx_hashes);
+          local_time_, creator_, counter_, tx_hashes);
     }
 
     std::shared_ptr<iroha::model::Query>
@@ -198,7 +204,8 @@ namespace iroha_cli {
         QueryParams params) {
       auto asset_id = params[0];
       auto query = std::make_shared<GetAssetInfo>(asset_id);
-      //TODO 26/09/17 grimadas: remove duplicated code and move setQueryMetaData calls to private method IR-508 #goodfirstissue
+      // TODO 26/09/17 grimadas: remove duplicated code and move
+      // setQueryMetaData calls to private method IR-508 #goodfirstissue
       generator_.setQueryMetaData(query, local_time_, creator_, counter_);
       return query;
     }
@@ -235,7 +242,8 @@ namespace iroha_cli {
     }
 
     bool InteractiveQueryCli::parseSendToIroha(QueryParams params) {
-      auto address = parseIrohaPeerParams(params);
+      auto address =
+          parseIrohaPeerParams(params, default_peer_ip, default_port);
       if (not address.has_value()) {
         return true;
       }

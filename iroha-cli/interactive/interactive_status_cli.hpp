@@ -25,13 +25,14 @@
 namespace iroha_cli {
   namespace interactive {
     /**
-   * A special class for retrieving transaction status.
-   * It's not a transaction and not a query so it should be
-   * processed separately.
-   */
+     * A special class for retrieving transaction status.
+     * It's not a transaction and not a query so it should be
+     * processed separately.
+     */
     class InteractiveStatusCli {
      public:
-      InteractiveStatusCli();
+      InteractiveStatusCli(const std::string &default_peer_ip,
+                           const int &default_port);
       void run();
 
      private:
@@ -54,6 +55,9 @@ namespace iroha_cli {
 
       const std::string GET_TX_INFO = "get_tx_info";
 
+      std::string default_peer_ip;
+      int default_port;
+
       std::unordered_map<ActionName, ResultHandler> resultHandlers_;
       ParamsMap resultParamsDescriptions_;
 
@@ -65,7 +69,7 @@ namespace iroha_cli {
       MenuContext currentContext_;
       std::string txHash_;
     };
-  }
-}
+  }  // namespace interactive
+}  // namespace iroha_cli
 
 #endif  // IROHA_INTERACTIVE_STATUS_CLI_HPP
