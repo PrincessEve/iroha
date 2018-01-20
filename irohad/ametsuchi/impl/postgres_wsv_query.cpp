@@ -22,13 +22,17 @@ namespace iroha {
 
     using std::string;
 
-    using nonstd::optional;
-    using nonstd::nullopt;
     using model::Account;
-    using model::Asset;
     using model::AccountAsset;
-    using model::Peer;
+    using model::Asset;
     using model::Domain;
+    using model::Peer;
+    using nonstd::nullopt;
+    using nonstd::optional;
+
+    const std::string kRoleId = "role_id";
+    const char *kAccountNotFound = "Account {} not found";
+    const std::string kPublicKey = "public_key";
 
     PostgresWsvQuery::PostgresWsvQuery(pqxx::nontransaction &transaction)
         : transaction_(transaction), log_(logger::log("PostgresWsvQuery")) {}
@@ -61,15 +65,14 @@ namespace iroha {
       try {
         result = transaction_.exec(
             "SELECT role_id FROM account_has_roles WHERE account_id = "
-            + transaction_.quote(account_id)
-            + ";");
+            + transaction_.quote(account_id) + ";");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return nullopt;
       }
       std::vector<std::string> roles;
       for (const auto &row : result) {
-        roles.emplace_back(row.at("role_id").c_str());
+        roles.emplace_back(row.at(kRoleId).c_str());
       }
       return roles;
     }
@@ -103,7 +106,7 @@ namespace iroha {
       }
       std::vector<std::string> roles;
       for (const auto &row : result) {
-        roles.emplace_back(row.at("role_id").c_str());
+        roles.emplace_back(row.at(kRoleId).c_str());
       }
       return roles;
     }
@@ -112,14 +115,13 @@ namespace iroha {
       pqxx::result result;
       try {
         result = transaction_.exec("SELECT * FROM account WHERE account_id = "
-                                   + transaction_.quote(account_id)
-                                   + ";");
+                                   + transaction_.quote(account_id) + ";");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return nullopt;
       }
       if (result.empty()) {
-        log_->info("Account {} not found", account_id);
+        log_->info(kAccountNotFound, account_id);
         return nullopt;
       }
       Account account;
@@ -142,14 +144,13 @@ namespace iroha {
             "SELECT data#>>"
             + transaction_.quote("{" + creator_account_id + ", " + detail + "}")
             + " FROM account WHERE account_id = "
-            + transaction_.quote(account_id)
-            + ";");
+            + transaction_.quote(account_id) + ";");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return nullopt;
       }
       if (result.empty()) {
-        log_->info("Account {} not found", account_id);
+        log_->info(kAccountNotFound, account_id);
         return nullopt;
       }
       auto row = result.at(0);
@@ -169,15 +170,14 @@ namespace iroha {
       try {
         result = transaction_.exec(
             "SELECT public_key FROM account_has_signatory WHERE account_id = "
-            + transaction_.quote(account_id)
-            + ";");
+            + transaction_.quote(account_id) + ";");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return nullopt;
       }
       std::vector<pubkey_t> signatories;
       for (const auto &row : result) {
-        pqxx::binarystring public_key_str(row.at("public_key"));
+        pqxx::binarystring public_key_str(row.at(kPublicKey));
         pubkey_t pubkey;
         std::copy(public_key_str.begin(), public_key_str.end(), pubkey.begin());
         signatories.push_back(pubkey);
@@ -271,7 +271,7 @@ namespace iroha {
       std::vector<Peer> peers;
       for (const auto &row : result) {
         model::Peer peer;
-        pqxx::binarystring public_key_str(row.at("public_key"));
+        pqxx::binarystring public_key_str(row.at(kPublicKey));
         pubkey_t pubkey;
         std::copy(public_key_str.begin(), public_key_str.end(), pubkey.begin());
         peer.pubkey = pubkey;
