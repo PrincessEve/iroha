@@ -27,20 +27,37 @@ namespace iroha {
     PostgresWsvCommand::PostgresWsvCommand(pqxx::nontransaction &transaction)
         : transaction_(transaction), log_(logger::log("PostgresWsvCommand")) {}
 
+    const char *kUnsuccesfulAlloc = "Unable to alloc: {}";
+
     template <typename T>
     std::string try_quote(PostgresWsvCommand *that, const T &s) noexcept {
       try {
         return that->transaction_.quote(s);
       } catch (std::bad_alloc &e) {
-        that->log_->error("Unable to alloc: {}", e.what());
+        that->log_->error(kUnsuccesfulAlloc, e.what());
+        std::terminate();
+      }
+    }
+
+    std::string try_concat(PostgresWsvCommand *that,
+                           std::initializer_list<std::string> l) noexcept {
+      try {
+        return std::accumulate(
+            l.begin(), l.end(), std::string(), [](std::string s, auto next) {
+              return s + next;
+            });
+      } catch (std::bad_alloc &e) {
+        that->log_->error(kUnsuccesfulAlloc, e.what());
         std::terminate();
       }
     }
 
     bool PostgresWsvCommand::insertRole(const std::string &role_name) {
       try {
-        transaction_.exec("INSERT INTO role(role_id) VALUES ("
-                          + try_quote(this, role_name) + ");");
+        transaction_.exec(try_concat(this,
+                                     {"INSERT INTO role(role_id) VALUES (",
+                                      try_quote(this, role_name),
+                                      ");"}));
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;
@@ -51,10 +68,13 @@ namespace iroha {
     bool PostgresWsvCommand::insertAccountRole(const std::string &account_id,
                                                const std::string &role_name) {
       try {
-        transaction_.exec(
-            "INSERT INTO account_has_roles(account_id, role_id) VALUES ("
-            + try_quote(this, account_id) + ", " + try_quote(this, role_name)
-            + ");");
+        transaction_.exec(try_concat(
+            this,
+            {"INSERT INTO account_has_roles(account_id, role_id) VALUES (",
+             try_quote(this, account_id),
+             ", ",
+             try_quote(this, role_name),
+             ");"}));
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;

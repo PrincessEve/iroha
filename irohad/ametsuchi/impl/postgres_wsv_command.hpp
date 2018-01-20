@@ -70,6 +70,9 @@ namespace iroha {
      private:
       template <typename T>
       friend std::string try_quote(PostgresWsvCommand *, const T &) noexcept;
+      friend std::string try_concat(
+          PostgresWsvCommand *, std::initializer_list<std::string>) noexcept;
+
       const size_t default_tx_counter = 0;
 
       pqxx::nontransaction &transaction_;
