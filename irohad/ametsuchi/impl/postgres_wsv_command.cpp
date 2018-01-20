@@ -17,6 +17,7 @@
 
 #include "ametsuchi/impl/postgres_wsv_command.hpp"
 
+#include <exception>
 #include <iterator>
 #include <numeric>
 
@@ -26,11 +27,20 @@ namespace iroha {
     PostgresWsvCommand::PostgresWsvCommand(pqxx::nontransaction &transaction)
         : transaction_(transaction), log_(logger::log("PostgresWsvCommand")) {}
 
+    template <typename T>
+    std::string try_quote(PostgresWsvCommand *that, const T &s) noexcept {
+      try {
+        return that->transaction_.quote(s);
+      } catch (std::bad_alloc &e) {
+        that->log_->error("Unable to alloc: {}", e.what());
+        std::terminate();
+      }
+    }
+
     bool PostgresWsvCommand::insertRole(const std::string &role_name) {
       try {
         transaction_.exec("INSERT INTO role(role_id) VALUES ("
-                          + transaction_.quote(role_name)
-                          + ");");
+                          + try_quote(this, role_name) + ");");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;
@@ -43,9 +53,7 @@ namespace iroha {
       try {
         transaction_.exec(
             "INSERT INTO account_has_roles(account_id, role_id) VALUES ("
-            + transaction_.quote(account_id)
-            + ", "
-            + transaction_.quote(role_name)
+            + try_quote(this, account_id) + ", " + try_quote(this, role_name)
             + ");");
       } catch (const std::exception &e) {
         log_->error(e.what());
@@ -58,10 +66,8 @@ namespace iroha {
                                                const std::string &role_name) {
       try {
         transaction_.exec("DELETE FROM account_has_roles WHERE account_id="
-                          + transaction_.quote(account_id)
-                          + "AND role_id="
-                          + transaction_.quote(role_name)
-                          + ";");
+                          + try_quote(this, account_id)
+                          + "AND role_id=" + try_quote(this, role_name) + ";");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;
@@ -72,8 +78,8 @@ namespace iroha {
     bool PostgresWsvCommand::insertRolePermissions(
         const std::string &role_id, const std::set<std::string> &permissions) {
       auto entry = [this, &role_id](auto permission) {
-        return "(" + transaction_.quote(role_id) + ", "
-            + transaction_.quote(permission) + ")";
+        return "(" + try_quote(this, role_id) + ", "
+            + try_quote(this, permission) + ")";
       };
       try {
         transaction_.exec(
@@ -100,12 +106,9 @@ namespace iroha {
             "INSERT INTO "
             "account_has_grantable_permissions(permittee_account_id, "
             "account_id, permission_id) VALUES ("
-            + transaction_.quote(permittee_account_id)
-            + ", "
-            + transaction_.quote(account_id)
-            + ", "
-            + transaction_.quote(permission_id)
-            + ");");
+            + try_quote(this, permittee_account_id) + ", "
+            + try_quote(this, account_id) + ", "
+            + try_quote(this, permission_id) + ");");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;
@@ -121,12 +124,9 @@ namespace iroha {
         transaction_.exec(
             "DELETE FROM public.account_has_grantable_permissions WHERE "
             "permittee_account_id="
-            + transaction_.quote(permittee_account_id)
-            + " AND account_id="
-            + transaction_.quote(account_id)
-            + " AND permission_id="
-            + transaction_.quote(permission_id)
-            + " ;");
+            + try_quote(this, permittee_account_id)
+            + " AND account_id=" + try_quote(this, account_id)
+            + " AND permission_id=" + try_quote(this, permission_id) + " ;");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;
@@ -139,17 +139,13 @@ namespace iroha {
         transaction_.exec(
             "INSERT INTO account(account_id, domain_id, quorum, "
             "transaction_count, data) VALUES ("
-            + transaction_.quote(account.account_id)
-            + ", "
-            + transaction_.quote(account.domain_id)
-            + ", "
-            + transaction_.quote(account.quorum)
+            + try_quote(this, account.account_id) + ", "
+            + try_quote(this, account.domain_id) + ", "
+            + try_quote(this, account.quorum)
             + ", "
             // Transaction counter
-            + transaction_.quote(default_tx_counter)
-            + ", "
-            + transaction_.quote(account.json_data)
-            + ");");
+            + try_quote(this, default_tx_counter) + ", "
+            + try_quote(this, account.json_data) + ");");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;
@@ -163,14 +159,9 @@ namespace iroha {
         transaction_.exec(
             "INSERT INTO asset(asset_id, domain_id, \"precision\", data) "
             "VALUES ("
-            + transaction_.quote(asset.asset_id)
-            + ", "
-            + transaction_.quote(asset.domain_id)
-            + ", "
-            + transaction_.quote(precision)
-            + ", "
-            + /*asset.data*/ "NULL"
-            + ");");
+            + try_quote(this, asset.asset_id) + ", "
+            + try_quote(this, asset.domain_id) + ", "
+            + try_quote(this, precision) + ", " + /*asset.data*/ "NULL" + ");");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;
@@ -184,9 +175,9 @@ namespace iroha {
         transaction_.exec(
             "INSERT INTO account_has_asset(account_id, asset_id, amount) "
             "VALUES ("
-            + transaction_.quote(asset.account_id) + ", "
-            + transaction_.quote(asset.asset_id) + ", "
-            + transaction_.quote(asset.balance.to_string())
+            + try_quote(this, asset.account_id) + ", "
+            + try_quote(this, asset.asset_id) + ", "
+            + try_quote(this, asset.balance.to_string())
             + ") ON CONFLICT (account_id, asset_id) DO UPDATE SET "
             "amount = EXCLUDED.amount;");
       } catch (const std::exception &e) {
@@ -200,7 +191,7 @@ namespace iroha {
       try {
         pqxx::binarystring public_key(signatory.data(), signatory.size());
         transaction_.exec("INSERT INTO signatory(public_key) VALUES ("
-                          + transaction_.quote(public_key)
+                          + try_quote(this, public_key)
                           + ") ON CONFLICT DO NOTHING;");
       } catch (const std::exception &e) {
         log_->error(e.what());
@@ -215,9 +206,7 @@ namespace iroha {
       try {
         transaction_.exec(
             "INSERT INTO account_has_signatory(account_id, public_key) VALUES ("
-            + transaction_.quote(account_id)
-            + ", "
-            + transaction_.quote(public_key)
+            + try_quote(this, account_id) + ", " + try_quote(this, public_key)
             + ");");
       } catch (const std::exception &e) {
         log_->error(e.what());
@@ -232,10 +221,8 @@ namespace iroha {
       try {
         transaction_.exec(
             "DELETE FROM account_has_signatory WHERE account_id = "
-            + transaction_.quote(account_id)
-            + " AND public_key = "
-            + transaction_.quote(public_key)
-            + ";");
+            + try_quote(this, account_id)
+            + " AND public_key = " + try_quote(this, public_key) + ";");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;
@@ -247,12 +234,12 @@ namespace iroha {
       pqxx::binarystring public_key(signatory.data(), signatory.size());
       try {
         transaction_.exec("DELETE FROM signatory WHERE public_key = "
-            + transaction_.quote(public_key)
+            + try_quote(this, public_key)
             + " AND NOT EXISTS (SELECT 1 FROM account_has_signatory "
             "WHERE public_key = "
-            + transaction_.quote(public_key)
+            + try_quote(this, public_key)
             + ") AND NOT EXISTS (SELECT 1 FROM peer WHERE public_key = "
-            + transaction_.quote(public_key) + ");");
+            + try_quote(this, public_key) + ");");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;
@@ -264,10 +251,8 @@ namespace iroha {
       pqxx::binarystring public_key(peer.pubkey.data(), peer.pubkey.size());
       try {
         transaction_.exec("INSERT INTO peer(public_key, address) VALUES ("
-                          + transaction_.quote(public_key)
-                          + ", "
-                          + transaction_.quote(peer.address)
-                          + ");");
+                          + try_quote(this, public_key) + ", "
+                          + try_quote(this, peer.address) + ");");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;
@@ -278,11 +263,9 @@ namespace iroha {
     bool PostgresWsvCommand::deletePeer(const model::Peer &peer) {
       pqxx::binarystring public_key(peer.pubkey.data(), peer.pubkey.size());
       try {
-        transaction_.exec("DELETE FROM peer WHERE public_key = "
-                          + transaction_.quote(public_key)
-                          + " AND address = "
-                          + transaction_.quote(peer.address)
-                          + ";");
+        transaction_.exec(
+            "DELETE FROM peer WHERE public_key = " + try_quote(this, public_key)
+            + " AND address = " + try_quote(this, peer.address) + ";");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;
@@ -293,10 +276,8 @@ namespace iroha {
     bool PostgresWsvCommand::insertDomain(const model::Domain &domain) {
       try {
         transaction_.exec("INSERT INTO domain(domain_id, default_role) VALUES ("
-                          + transaction_.quote(domain.domain_id)
-                          + ", "
-                          + transaction_.quote(domain.default_role)
-                          + ");");
+                          + try_quote(this, domain.domain_id) + ", "
+                          + try_quote(this, domain.default_role) + ");");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;
@@ -309,12 +290,12 @@ namespace iroha {
         transaction_.exec(
             "UPDATE account\n"
             "   SET quorum=" +
-            transaction_.quote(account.quorum) +
+            try_quote(this, account.quorum) +
             ", transaction_count=" +
-            /*account.transaction_count*/ transaction_.quote(default_tx_counter) +
+            /*account.transaction_count*/ try_quote(this, default_tx_counter) +
             "\n"
             " WHERE account_id=" +
-            transaction_.quote(account.account_id) + ";");
+            try_quote(this, account.account_id) + ";");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;
@@ -329,18 +310,13 @@ namespace iroha {
       try {
         transaction_.exec(
             "UPDATE account SET data = jsonb_set(CASE WHEN data ?"
-            + transaction_.quote(creator_account_id)
+            + try_quote(this, creator_account_id)
             + " THEN data ELSE jsonb_set(data, "
-            + transaction_.quote("{" + creator_account_id + "}")
-            + ","
-            + transaction_.quote("{}")
-            + ") END,"
-            + transaction_.quote("{" + creator_account_id + ", " + key + "}")
-            + ","
-            + transaction_.quote("\"" + val + "\"")
-            + ") WHERE account_id="
-            + transaction_.quote(account_id)
-            + ";");
+            + try_quote(this, "{" + creator_account_id + "}") + ","
+            + try_quote(this, "{}") + ") END,"
+            + try_quote(this, "{" + creator_account_id + ", " + key + "}") + ","
+            + try_quote(this, "\"" + val + "\"")
+            + ") WHERE account_id=" + try_quote(this, account_id) + ";");
       } catch (const std::exception &e) {
         log_->error(e.what());
         return false;
