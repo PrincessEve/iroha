@@ -23,7 +23,6 @@
 
 namespace iroha {
   namespace ametsuchi {
-
     PostgresWsvCommand::PostgresWsvCommand(pqxx::nontransaction &transaction)
         : transaction_(transaction), log_(logger::log("PostgresWsvCommand")) {}
 
@@ -33,6 +32,19 @@ namespace iroha {
     std::string try_quote(PostgresWsvCommand *that, const T &s) noexcept {
       try {
         return that->transaction_.quote(s);
+      } catch (std::bad_alloc &e) {
+        that->log_->error(kUnsuccesfulAlloc, e.what());
+        std::terminate();
+      }
+    }
+
+    std::string try_concat(PostgresWsvCommand *that,
+                           std::initializer_list<const char *> l) noexcept {
+      try {
+        return std::accumulate(
+            l.begin(), l.end(), std::string(), [](std::string s, auto next) {
+              return s + next;
+            });
       } catch (std::bad_alloc &e) {
         that->log_->error(kUnsuccesfulAlloc, e.what());
         std::terminate();
@@ -52,17 +64,21 @@ namespace iroha {
       }
     }
 
-    bool PostgresWsvCommand::insertRole(const std::string &role_name) {
+    bool try_exec(PostgresWsvCommand *that, const std::string &s) noexcept {
       try {
-        transaction_.exec(try_concat(this,
-                                     {"INSERT INTO role(role_id) VALUES (",
-                                      try_quote(this, role_name),
-                                      ");"}));
+        that->transaction_.exec(s);
       } catch (const std::exception &e) {
-        log_->error(e.what());
+        that->log_->error(e.what());
         return false;
       }
       return true;
+    }
+
+    bool PostgresWsvCommand::insertRole(const std::string &role_name) {
+      auto rname = try_quote(this, role_name);
+      auto list = {"INSERT INTO role(role_id) VALUES (", rname.c_str(), ");"};
+      auto query = try_concat(this, list);
+      return try_exec(this, query);
     }
 
     bool PostgresWsvCommand::insertAccountRole(const std::string &account_id,
